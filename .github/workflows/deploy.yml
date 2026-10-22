@@ -1,0 +1,231 @@
+# Deploy do Serviço de Orçamento e Pagamento no EKS (mesmo cluster, namespace próprio por ambiente)
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment alvo
+        required: true
+        type: string
+      namespace:
+        description: Namespace Kubernetes do serviço no ambiente
+        required: true
+        type: string
+      image_ref:
+        description: Imagem completa a ser implantada
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.environment }} (${{ inputs.namespace }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      APP_DB_URL: ${{ vars.APP_DB_URL }}
+      APP_DB_USER: ${{ vars.APP_DB_USER || 'oficina_admin' }}
+      SQS_OS_EVENTOS_URL: ${{ vars.SQS_OS_EVENTOS_URL }}
+      SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL: ${{ vars.SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL }}
+      SERVERLESS_JWT_ISSUER: ${{ vars.SERVERLESS_JWT_ISSUER || 'oficina-auth-serverless' }}
+      SERVERLESS_JWT_AUDIENCE: ${{ vars.SERVERLESS_JWT_AUDIENCE || 'oficina-backend' }}
+      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'fake' }}
+      MERCADOPAGO_PUBLIC_KEY: ${{ vars.MERCADOPAGO_PUBLIC_KEY }}
+      API_GATEWAY_BASE_URL: ${{ vars.API_GATEWAY_BASE_URL }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_WORKSPACE_AUTH: ${{ vars.TF_WORKSPACE_AUTH }}
+      NEW_RELIC_ENABLED: ${{ vars.NEW_RELIC_ENABLED || 'false' }}
+      DEPLOY_ENABLED: ${{ vars.DEPLOY_ENABLED || 'false' }}
+    steps:
+      - name: Deployment gate
+        run: |
+          if [ "$DEPLOY_ENABLED" != "true" ]; then
+            echo '::error::Deploy bloqueado: DEPLOY_ENABLED deve valer true depois do configure-environment.ps1 (EKS e banco aplicados).'
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.DEPLOY_ENABLED == 'true'
+
+      - name: Validate required environment configuration
+        if: env.DEPLOY_ENABLED == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_SERVERLESS_JWT_PUBLIC_KEY: ${{ secrets.SERVERLESS_JWT_PUBLIC_KEY }}
+          MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+          MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+          TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN APP_DB_PASSWORD APP_JWT_SECRET APP_SERVERLESS_JWT_PUBLIC_KEY TF_API_TOKEN EKS_CLUSTER_NAME APP_DB_URL APP_DB_USER SQS_OS_EVENTOS_URL SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL TF_CLOUD_ORGANIZATION TF_WORKSPACE_AUTH; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${NEW_RELIC_ENABLED,,}" = "true" ] && [ -z "$NEW_RELIC_LICENSE_KEY" ]; then
+            missing+=("NEW_RELIC_LICENSE_KEY")
+          fi
+          if [ "$PAYMENT_PROVIDER" = "mercadopago" ] && { [ -z "$MERCADOPAGO_ACCESS_TOKEN" ] || [ -z "$MERCADOPAGO_WEBHOOK_SECRET" ]; }; then
+            missing+=("MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_WEBHOOK_SECRET")
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Configure no GitHub Environment %s: %s\n' '${{ inputs.environment }}' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Configure AWS Academy credentials
+        if: env.DEPLOY_ENABLED == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        if: env.DEPLOY_ENABLED == 'true'
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.34.0'
+
+      - name: Configure cluster access
+        if: env.DEPLOY_ENABLED == 'true'
+        id: cluster
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+          kubectl cluster-info
+
+      - name: Render application manifests
+        if: env.DEPLOY_ENABLED == 'true'
+        env:
+          TARGET_NS: ${{ inputs.namespace }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+        run: |
+          set -euo pipefail
+          rm -rf rendered
+          mkdir -p rendered
+          cp k8s/*.yaml rendered/
+          sed -i "s|name: oficina-orcamento-pagamento$|name: ${TARGET_NS}|" rendered/namespace.yaml
+          sed -i "s|namespace: oficina-orcamento-pagamento$|namespace: ${TARGET_NS}|" rendered/*.yaml
+          sed -i "s|image: oficina-orcamento-pagamento-service:latest|image: ${IMAGE_REF}|" rendered/app-deployment.yaml
+          sed -i "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Always|" rendered/app-deployment.yaml
+          kubectl apply -f rendered/namespace.yaml
+
+      - name: Apply configuration
+        if: env.DEPLOY_ENABLED == 'true'
+        env:
+          TARGET_NS: ${{ inputs.namespace }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_SERVERLESS_JWT_PUBLIC_KEY: ${{ secrets.SERVERLESS_JWT_PUBLIC_KEY }}
+          MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+          MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          nr_enabled=false
+          if [ "${NEW_RELIC_ENABLED,,}" = "true" ]; then nr_enabled=true; fi
+          kubectl create configmap orcamento-pagamento-config \
+            --namespace "$TARGET_NS" \
+            --from-literal=SERVER_PORT=8080 \
+            --from-literal=SPRING_PROFILES_ACTIVE=prod \
+            --from-literal=OFICINA_ENVIRONMENT='${{ inputs.environment }}' \
+            --from-literal=MENSAGERIA_TIPO=sqs \
+            --from-literal=AWS_REGION="$AWS_REGION" \
+            --from-literal=SQS_OS_EVENTOS_URL="$SQS_OS_EVENTOS_URL" \
+            --from-literal=DB_URL="$APP_DB_URL" \
+            --from-literal=DB_USER="$APP_DB_USER" \
+            --from-literal=SERVERLESS_JWT_ISSUER="$SERVERLESS_JWT_ISSUER" \
+            --from-literal=SERVERLESS_JWT_AUDIENCE="$SERVERLESS_JWT_AUDIENCE" \
+            --from-literal=SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL="$SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL" \
+            --from-literal=PAYMENT_PROVIDER="$PAYMENT_PROVIDER" \
+            --from-literal=MERCADOPAGO_PUBLIC_KEY="$MERCADOPAGO_PUBLIC_KEY" \
+            --from-literal=MERCADOPAGO_NOTIFICATION_URL="${API_GATEWAY_BASE_URL:+${API_GATEWAY_BASE_URL%/}/webhooks/mercadopago}" \
+            --from-literal=JAVA_TOOL_OPTIONS=-javaagent:/opt/newrelic/newrelic.jar \
+            --from-literal=NEW_RELIC_AGENT_ENABLED="$nr_enabled" \
+            --from-literal=NEW_RELIC_APP_NAME="oficina-orcamento-pagamento-service-${{ inputs.environment }}" \
+            --from-literal=NEW_RELIC_DISTRIBUTED_TRACING_ENABLED=true \
+            --from-literal=NEW_RELIC_LOG_FILE_NAME=STDOUT \
+            --from-literal=NEW_RELIC_LABELS="environment:${{ inputs.environment }};service:oficina-orcamento-pagamento-service" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic orcamento-pagamento-secrets \
+            --namespace "$TARGET_NS" \
+            --from-literal=DB_PASSWORD="$APP_DB_PASSWORD" \
+            --from-literal=JWT_SECRET="$APP_JWT_SECRET" \
+            --from-literal=SERVERLESS_JWT_PUBLIC_KEY="$APP_SERVERLESS_JWT_PUBLIC_KEY" \
+            --from-literal=MERCADOPAGO_ACCESS_TOKEN="$MERCADOPAGO_ACCESS_TOKEN" \
+            --from-literal=MERCADOPAGO_WEBHOOK_SECRET="$MERCADOPAGO_WEBHOOK_SECRET" \
+            --from-literal=NEW_RELIC_LICENSE_KEY="$NEW_RELIC_LICENSE_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply application manifests
+        if: env.DEPLOY_ENABLED == 'true'
+        run: |
+          set -euo pipefail
+          kubectl apply -f rendered/app-deployment.yaml
+          kubectl apply -f rendered/app-service.yaml
+          kubectl apply -f rendered/hpa.yaml
+          kubectl apply -f rendered/pdb.yaml
+          kubectl rollout restart deployment/oficina-orcamento-pagamento -n "${{ inputs.namespace }}"
+
+      - name: Wait for application rollout
+        if: env.DEPLOY_ENABLED == 'true'
+        run: kubectl rollout status deployment/oficina-orcamento-pagamento -n "${{ inputs.namespace }}" --timeout=1200s
+
+      - name: Smoke test
+        if: env.DEPLOY_ENABLED == 'true'
+        run: |
+          set -euo pipefail
+          kubectl -n "${{ inputs.namespace }}" run smoke-${{ github.run_id }} \
+            --image=curlimages/curl:8.10.1 --restart=Never --rm -i --quiet \
+            --command -- curl -fsS http://oficina-orcamento-pagamento/actuator/health/readiness
+
+      - name: Capture public service URL
+        if: env.DEPLOY_ENABLED == 'true'
+        id: service-url
+        env:
+          TARGET_NS: ${{ inputs.namespace }}
+        run: |
+          set -euo pipefail
+          host=''
+          for attempt in $(seq 1 30); do
+            host="$(kubectl get service oficina-orcamento-pagamento -n "$TARGET_NS" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+            if [ -n "$host" ]; then break; fi
+            echo "Aguardando LoadBalancer público (${attempt}/30)..."
+            sleep 10
+          done
+          if [ -z "$host" ]; then
+            echo '::error::O Service oficina-orcamento-pagamento não recebeu hostname público.'
+            exit 1
+          fi
+          echo "value=http://${host}" >> "$GITHUB_OUTPUT"
+          echo "- URL pública: http://${host}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Synchronize public URL with the API Gateway (Auth)
+        if: env.DEPLOY_ENABLED == 'true'
+        env:
+          SERVICE_URL: ${{ steps.service-url.outputs.value }}
+          TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/sync-service-url.py \
+            --service-url "$SERVICE_URL" \
+            --organization "$TF_CLOUD_ORGANIZATION" \
+            --auth-workspace "$TF_WORKSPACE_AUTH" \
+            --variable orcamento_pagamento_base_url
+          echo "- URL pública enviada ao workspace ${TF_WORKSPACE_AUTH} (rode o apply do Auth para publicar as rotas)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect diagnostics on failure
+        if: env.DEPLOY_ENABLED == 'true' && failure() && steps.cluster.outcome == 'success'
+        run: |
+          kubectl get deployment,pods,svc,hpa -n "${{ inputs.namespace }}" || true
+          kubectl describe deployment/oficina-orcamento-pagamento -n "${{ inputs.namespace }}" || true
