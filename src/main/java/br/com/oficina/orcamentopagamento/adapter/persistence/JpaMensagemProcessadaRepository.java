@@ -2,6 +2,8 @@ package br.com.oficina.orcamentopagamento.adapter.persistence;
 
 import br.com.oficina.orcamentopagamento.usecase.gateway.MensagemProcessadaRepository;
 import br.com.oficina.orcamentopagamento.usecase.saga.MensagemSaga;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
 import org.springframework.stereotype.Component;
 
@@ -9,15 +11,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class JpaMensagemProcessadaRepository implements MensagemProcessadaRepository {
 
-  private final SpringDataMensagemProcessadaRepository jpa;
-
-  JpaMensagemProcessadaRepository(SpringDataMensagemProcessadaRepository jpa) {
-    this.jpa = jpa;
-  }
+  @PersistenceContext private EntityManager em;
 
   @Override
   public boolean registrarSeNova(MensagemSaga mensagem) {
-    if (jpa.existsById(mensagem.messageId())) {
+    if (em.find(MensagemProcessadaJpaEntity.class, mensagem.messageId()) != null) {
       return false;
     }
     MensagemProcessadaJpaEntity e = new MensagemProcessadaJpaEntity();
@@ -26,7 +24,8 @@ public class JpaMensagemProcessadaRepository implements MensagemProcessadaReposi
     e.numeroOs = mensagem.numeroOs();
     e.correlationId = mensagem.correlationId();
     e.processadaEm = Instant.now();
-    jpa.saveAndFlush(e);
+    em.persist(e);
+    em.flush();
     return true;
   }
 }

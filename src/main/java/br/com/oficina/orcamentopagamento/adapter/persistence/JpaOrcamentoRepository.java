@@ -4,6 +4,8 @@ import br.com.oficina.orcamentopagamento.domain.model.ItemOrcamento;
 import br.com.oficina.orcamentopagamento.domain.model.Orcamento;
 import br.com.oficina.orcamentopagamento.domain.model.StatusOrcamento;
 import br.com.oficina.orcamentopagamento.usecase.gateway.OrcamentoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.ArrayList;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
@@ -11,20 +13,32 @@ import org.springframework.stereotype.Component;
 @Component
 public class JpaOrcamentoRepository implements OrcamentoRepository {
 
-  private final SpringDataOrcamentoRepository jpa;
-
-  JpaOrcamentoRepository(SpringDataOrcamentoRepository jpa) {
-    this.jpa = jpa;
-  }
+  @PersistenceContext private EntityManager em;
 
   @Override
   public Orcamento salvar(Orcamento orcamento) {
-    return paraDominio(jpa.save(paraEntidade(orcamento)));
+    OrcamentoJpaEntity entidade = paraEntidade(orcamento);
+    if (entidade.id == null) {
+      em.persist(entidade);
+    } else {
+      entidade = em.merge(entidade);
+    }
+    em.flush();
+    return paraDominio(entidade);
   }
 
   @Override
   public Optional<Orcamento> atual(String numeroOs) {
-    return jpa.findFirstByNumeroOsOrderByIdDesc(numeroOs).map(JpaOrcamentoRepository::paraDominio);
+    return em
+        .createQuery(
+            "select o from OrcamentoJpaEntity o where o.numeroOs = :numeroOs order by o.id desc",
+            OrcamentoJpaEntity.class)
+        .setParameter("numeroOs", numeroOs)
+        .setMaxResults(1)
+        .getResultList()
+        .stream()
+        .findFirst()
+        .map(JpaOrcamentoRepository::paraDominio);
   }
 
   private static OrcamentoJpaEntity paraEntidade(Orcamento o) {

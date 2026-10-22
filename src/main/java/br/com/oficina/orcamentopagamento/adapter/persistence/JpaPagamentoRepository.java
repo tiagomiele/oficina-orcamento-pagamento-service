@@ -3,17 +3,15 @@ package br.com.oficina.orcamentopagamento.adapter.persistence;
 import br.com.oficina.orcamentopagamento.domain.model.Pagamento;
 import br.com.oficina.orcamentopagamento.domain.model.StatusPagamento;
 import br.com.oficina.orcamentopagamento.usecase.gateway.PagamentoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
 public class JpaPagamentoRepository implements PagamentoRepository {
 
-  private final SpringDataPagamentoRepository jpa;
-
-  JpaPagamentoRepository(SpringDataPagamentoRepository jpa) {
-    this.jpa = jpa;
-  }
+  @PersistenceContext private EntityManager em;
 
   @Override
   public Pagamento salvar(Pagamento p) {
@@ -30,12 +28,27 @@ public class JpaPagamentoRepository implements PagamentoRepository {
     e.detalhe = p.getDetalhe();
     e.criadoEm = p.getCriadoEm();
     e.atualizadoEm = p.getAtualizadoEm();
-    return paraDominio(jpa.save(e));
+    if (e.id == null) {
+      em.persist(e);
+    } else {
+      e = em.merge(e);
+    }
+    em.flush();
+    return paraDominio(e);
   }
 
   @Override
   public Optional<Pagamento> ultimo(String numeroOs) {
-    return jpa.findFirstByNumeroOsOrderByIdDesc(numeroOs).map(JpaPagamentoRepository::paraDominio);
+    return em
+        .createQuery(
+            "select p from PagamentoJpaEntity p where p.numeroOs = :numeroOs order by p.id desc",
+            PagamentoJpaEntity.class)
+        .setParameter("numeroOs", numeroOs)
+        .setMaxResults(1)
+        .getResultList()
+        .stream()
+        .findFirst()
+        .map(JpaPagamentoRepository::paraDominio);
   }
 
   private static Pagamento paraDominio(PagamentoJpaEntity e) {
