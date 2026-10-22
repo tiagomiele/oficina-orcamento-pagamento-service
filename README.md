@@ -72,3 +72,8 @@ Clean Architecture com 4 camadas, validada por ArchUnit (`ArchitectureTest`):
 ## CI
 
 `.github/workflows/ci.yml`: validação dos workflows, build com testes e JaCoCo, SonarCloud (quality gate, quando o secret `SONAR_TOKEN` existir), SBOM CycloneDX e Trivy + Gitleaks.
+
+## Deploy (EKS)
+
+`cd.yml` publica a imagem no GHCR e chama `deploy.yml`, que aplica `k8s/` no namespace `oficina-orcamento-pagamento-<env>` do cluster compartilhado, com Service LoadBalancer próprio. O deploy só roda com `DEPLOY_ENABLED=true`, que o `configure-environment.ps1` liga depois do apply do EKS e do banco.
+- O deploy do Orçamento e Pagamento envia a URL do LoadBalancer para `orcamento_pagamento_base_url` no workspace do Auth (`scripts/sync-service-url.py`); depois é preciso rodar o apply do Auth para publicar as rotas no API Gateway.

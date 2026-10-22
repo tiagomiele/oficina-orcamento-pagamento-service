@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oficina-orcamento-pagamento
+  namespace: oficina-orcamento-pagamento
+  labels:
+    app.kubernetes.io/name: oficina-orcamento-pagamento
+    app.kubernetes.io/part-of: oficina-orcamento-pagamento-service
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oficina-orcamento-pagamento
