@@ -31,7 +31,8 @@ Também: `GET /orcamentos/{numeroOs}` e `GET /pagamentos/{numeroOs}` (link de pa
 ## Pagamento
 
 - `PAYMENT_PROVIDER=fake` (padrão): cobrança fictícia; `POST /pagamentos/{numeroOs}/simular?aprovado=true|false` simula a resposta (local e BDD).
-- `PAYMENT_PROVIDER=mercadopago`: Checkout Pro. Cria a preferência com `external_reference` = número da OS e `notification_url` = `MERCADOPAGO_NOTIFICATION_URL`. O webhook valida o header `x-signature` (HMAC-SHA256 com `MERCADOPAGO_WEBHOOK_SECRET`) e consulta `GET /v1/payments/{id}` antes de aplicar o resultado.
+- `PAYMENT_PROVIDER=mercadopago`: Checkout Pro (API REST, sem SDK). Cria a preferência com item `id` = número da OS, `external_reference` = número da OS, `notification_url` = `MERCADOPAGO_NOTIFICATION_URL`, `statement_descriptor` = `MERCADOPAGO_STATEMENT_DESCRIPTOR` e, se `MERCADOPAGO_BACK_URL` (HTTPS) estiver preenchida, `back_urls` com `auto_return=approved`. Não envia `payer`: o comprador preenche os dados no checkout. Erros da API (ex.: `invalid_access_token`, `invalid_items`, `invalid_back_urls`) aparecem no log com o código e a mensagem do Mercado Pago, sem o token. O webhook valida o header `x-signature` (HMAC-SHA256 com `MERCADOPAGO_WEBHOOK_SECRET`) e consulta `GET /v1/payments/{id}` antes de aplicar o resultado.
+- `MERCADOPAGO_SANDBOX=true` usa o `sandbox_init_point`; `false`, o `init_point`.
 - `-ConfigureMercadoPago` do `configure-environment.ps1` cadastra `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_PUBLIC_KEY` e troca `PAYMENT_PROVIDER`.
 
 ## Configuração
@@ -43,6 +44,11 @@ Também: `GET /orcamentos/{numeroOs}` e `GET /pagamentos/{numeroOs}` (link de pa
 | `SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL` / `SQS_OS_EVENTOS_URL` | — | filas |
 | `AWS_SQS_ENDPOINT` | — | só LocalStack |
 | `JWT_SECRET`, `SERVERLESS_JWT_PUBLIC_KEY` | — | mesmos valores do OS Service |
+| `PAYMENT_PROVIDER` | `fake` | `mercadopago` liga o Checkout Pro |
+| `MERCADOPAGO_ACCESS_TOKEN` / `MERCADOPAGO_WEBHOOK_SECRET` | — | credencial de teste e assinatura do webhook (Secrets do GitHub) |
+| `MERCADOPAGO_BACK_URL` | — | HTTPS de retorno do comprador; vazio não envia `back_urls` |
+| `MERCADOPAGO_STATEMENT_DESCRIPTOR` | `OFICINA` | nome na fatura do cartão |
+| `MERCADOPAGO_SANDBOX` | `true` | `sandbox_init_point` (`true`) ou `init_point` (`false`) |
 
 ## Arquitetura
 

@@ -72,4 +72,7 @@ oficina:
       public-key: ${MERCADOPAGO_PUBLIC_KEY:}
       webhook-secret: ${MERCADOPAGO_WEBHOOK_SECRET:}
       notification-url: ${MERCADOPAGO_NOTIFICATION_URL:}
+      # HTTPS para onde o Checkout Pro devolve o comprador (sucesso, falha e pendente); vazio não envia.
+      back-url: ${MERCADOPAGO_BACK_URL:}
+      statement-descriptor: ${MERCADOPAGO_STATEMENT_DESCRIPTOR:OFICINA}
       sandbox: ${MERCADOPAGO_SANDBOX:true}
