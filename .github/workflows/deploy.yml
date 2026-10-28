@@ -35,6 +35,8 @@ jobs:
       SERVERLESS_JWT_AUDIENCE: ${{ vars.SERVERLESS_JWT_AUDIENCE || 'oficina-backend' }}
       PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'fake' }}
       MERCADOPAGO_PUBLIC_KEY: ${{ vars.MERCADOPAGO_PUBLIC_KEY }}
+      MERCADOPAGO_BACK_URL: ${{ vars.MERCADOPAGO_BACK_URL }}
+      MERCADOPAGO_SANDBOX: ${{ vars.MERCADOPAGO_SANDBOX || 'true' }}
       API_GATEWAY_BASE_URL: ${{ vars.API_GATEWAY_BASE_URL }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
       TF_WORKSPACE_AUTH: ${{ vars.TF_WORKSPACE_AUTH }}
@@ -149,6 +151,8 @@ jobs:
             --from-literal=SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL="$SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL" \
             --from-literal=PAYMENT_PROVIDER="$PAYMENT_PROVIDER" \
             --from-literal=MERCADOPAGO_PUBLIC_KEY="$MERCADOPAGO_PUBLIC_KEY" \
+            --from-literal=MERCADOPAGO_BACK_URL="$MERCADOPAGO_BACK_URL" \
+            --from-literal=MERCADOPAGO_SANDBOX="$MERCADOPAGO_SANDBOX" \
             --from-literal=MERCADOPAGO_NOTIFICATION_URL="${API_GATEWAY_BASE_URL:+${API_GATEWAY_BASE_URL%/}/webhooks/mercadopago}" \
             --from-literal=JAVA_TOOL_OPTIONS=-javaagent:/opt/newrelic/newrelic.jar \
             --from-literal=NEW_RELIC_AGENT_ENABLED="$nr_enabled" \
