@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: oficina-orcamento-pagamento-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/orcamento_pagamento}
+    username: ${DB_USER:oficina}
+    password: ${DB_PASSWORD:oficina}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: always
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+oficina:
+  environment: ${OFICINA_ENVIRONMENT:local}
+  security:
+    jwt:
+      secret: ${JWT_SECRET:change-me-in-production-at-least-32-chars-long-please}
+      issuer: oficina-backend
+      cliente-public-key: ${SERVERLESS_JWT_PUBLIC_KEY:}
+      cliente-issuer: ${SERVERLESS_JWT_ISSUER:oficina-auth-serverless}
+      cliente-audience: ${SERVERLESS_JWT_AUDIENCE:oficina-backend}
+  mensageria:
+    # memoria (local/testes) ou sqs
+    tipo: ${MENSAGERIA_TIPO:memoria}
+    sqs:
+      region: ${AWS_REGION:us-west-2}
+      endpoint: ${AWS_SQS_ENDPOINT:}
+      os-eventos-url: ${SQS_OS_EVENTOS_URL:}
+      comandos-url: ${SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL:}
+      wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:20}
+      max-messages: ${SQS_MAX_MESSAGES:10}
+      poll-delay-ms: ${SQS_POLL_DELAY_MS:1000}
+  pagamento:
+    # fake (local/BDD) ou mercadopago
+    provedor: ${PAYMENT_PROVIDER:fake}
+    mercadopago:
+      base-url: ${MERCADOPAGO_BASE_URL:https://api.mercadopago.com}
+      access-token: ${MERCADOPAGO_ACCESS_TOKEN:}
+      public-key: ${MERCADOPAGO_PUBLIC_KEY:}
+      webhook-secret: ${MERCADOPAGO_WEBHOOK_SECRET:}
+      notification-url: ${MERCADOPAGO_NOTIFICATION_URL:}
+      # HTTPS para onde o Checkout Pro devolve o comprador (sucesso, falha e pendente); vazio não envia.
+      back-url: ${MERCADOPAGO_BACK_URL:}
+      statement-descriptor: ${MERCADOPAGO_STATEMENT_DESCRIPTOR:OFICINA}
+      sandbox: ${MERCADOPAGO_SANDBOX:true}
