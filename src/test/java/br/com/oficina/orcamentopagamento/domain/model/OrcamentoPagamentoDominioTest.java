@@ -71,6 +71,11 @@ class OrcamentoPagamentoDominioTest {
     r.recusar("MP-2", "cartão recusado", T);
     assertThat(r.getDetalhe()).isEqualTo("cartão recusado");
     assertThat(r.getPagamentoExternoId()).isEqualTo("MP-2");
+    assertThatThrownBy(() -> r.recusar("MP-3", "x", T))
+        .isInstanceOf(TransicaoInvalidaException.class);
+    r.aprovar("MP-4", T);
+    assertThat(r.getStatus()).isEqualTo(StatusPagamento.APROVADO);
+    assertThat(r.getPagamentoExternoId()).isEqualTo("MP-4");
     assertThat(AcaoRejeicao.valueOf("REFAZER")).isEqualTo(AcaoRejeicao.REFAZER);
   }
 }

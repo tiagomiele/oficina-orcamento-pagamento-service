@@ -20,7 +20,7 @@ Participa da Saga orquestrada pelo OS Service (contrato em [`oficina-os-service/
 | `POST /orcamentos/{numeroOs}/aprovar` | `ORCAMENTO_APROVADO` |
 | `POST /orcamentos/{numeroOs}/rejeitar` `{"acao": "REFAZER" ou "CANCELAR", "motivo": "..."}` | `ORCAMENTO_REJEITADO` |
 | `POST /webhooks/mercadopago` (pagamento aprovado) | `PAGAMENTO_CONFIRMADO` (`comprovante` = id do pagamento) |
-| `POST /webhooks/mercadopago` (pagamento recusado) | `PAGAMENTO_RECUSADO` |
+| `POST /webhooks/mercadopago` (pagamento recusado) | `PAGAMENTO_RECUSADO` (se o comprador pagar depois no mesmo link, a aprovação ainda gera `PAGAMENTO_CONFIRMADO`) |
 | `POST /pagamentos/{numeroOs}/nova-tentativa` | — (nova cobrança após recusa) |
 
 Também: `GET /orcamentos/{numeroOs}` e `GET /pagamentos/{numeroOs}` (link de pagamento). O cliente (token do auth-serverless) só acessa as próprias OS; funcionário e técnico (token do OS Service) acessam todas.
