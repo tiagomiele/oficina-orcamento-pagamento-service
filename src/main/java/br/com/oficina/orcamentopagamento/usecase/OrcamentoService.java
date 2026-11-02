@@ -219,9 +219,9 @@ public class OrcamentoService {
     Optional<Orcamento> atual = orcamentos.atual(resultado.numeroOs());
     Optional<Pagamento> ultimo = pagamentos.ultimo(resultado.numeroOs());
     if (atual.isEmpty()
-        || atual.get().getStatus() != StatusOrcamento.PAGAMENTO_PENDENTE
         || ultimo.isEmpty()
-        || ultimo.get().getStatus() != StatusPagamento.PENDENTE) {
+        || !(pendente(atual.get(), ultimo.get())
+            || aprovadoAposRecusa(resultado, atual.get(), ultimo.get()))) {
       log.info(
           "Notificação do pagamento {} já aplicada ou fora de ordem",
           resultado.pagamentoExternoId());
@@ -247,6 +247,19 @@ public class OrcamentoService {
         orcamentos.salvar(orcamento),
         dados("motivo", resultado.detalhe()));
     return true;
+  }
+
+  private static boolean pendente(Orcamento orcamento, Pagamento pagamento) {
+    return orcamento.getStatus() == StatusOrcamento.PAGAMENTO_PENDENTE
+        && pagamento.getStatus() == StatusPagamento.PENDENTE;
+  }
+
+  /** No Checkout Pro o comprador pode tentar de novo no mesmo link depois de uma recusa. */
+  private static boolean aprovadoAposRecusa(
+      ResultadoPagamento resultado, Orcamento orcamento, Pagamento pagamento) {
+    return resultado.situacao() == Situacao.APROVADO
+        && orcamento.getStatus() == StatusOrcamento.PAGAMENTO_RECUSADO
+        && pagamento.getStatus() == StatusPagamento.RECUSADO;
   }
 
   private Orcamento doCliente(String numeroOs, Long idCliente) {

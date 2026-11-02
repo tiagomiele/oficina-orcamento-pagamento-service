@@ -60,4 +60,35 @@ class WebhookMercadoPagoIntegrationTest extends IntegrationBase {
         .andExpect(status().isOk());
     verify(provedor, never()).consultar("999");
   }
+
+  @Test
+  void aprovacaoDepoisDeRecusaNoMesmoLinkConfirmaPagamento() throws Exception {
+    String os = "OS-WH-2";
+    when(provedor.provedor()).thenReturn("mercadopago");
+    when(provedor.criarCobranca(any(), any(), any()))
+        .thenReturn(new Cobranca("PREF-2", "https://mp/checkout"));
+    when(provedor.consultar("101"))
+        .thenReturn(new ResultadoPagamento("101", os, Situacao.RECUSADO, "cc_rejected"));
+    when(provedor.consultar("102"))
+        .thenReturn(new ResultadoPagamento("102", os, Situacao.APROVADO, "accredited"));
+    gerarOrcamento(os, 21L);
+    servico.aprovar(os, 21L);
+    servico.processar(comando(TipoMensagemSaga.SOLICITAR_PAGAMENTO, os, null));
+
+    notificar("101");
+    assertThat(ultimoEvento(os)).isEqualTo(TipoMensagemSaga.PAGAMENTO_RECUSADO);
+    notificar("102");
+    assertThat(ultimoEvento(os)).isEqualTo(TipoMensagemSaga.PAGAMENTO_CONFIRMADO);
+    notificar("101");
+    assertThat(ultimoEvento(os)).isEqualTo(TipoMensagemSaga.PAGAMENTO_CONFIRMADO);
+    assertThat(eventos.enviadasPara(os)).hasSize(3);
+  }
+
+  private void notificar(String id) throws Exception {
+    String v1 = assinatura.hmac("id:" + id + ";ts:1700;");
+    mvc.perform(
+            post("/webhooks/mercadopago?type=payment&data.id=" + id)
+                .header("x-signature", "ts=1700,v1=" + v1))
+        .andExpect(status().isOk());
+  }
 }
