@@ -229,6 +229,17 @@ O `configure-environment.ps1 -ConfigureMercadoPago` (OS Service) grava as creden
 
 O deploy aplica `k8s/` no namespace `oficina-orcamento-pagamento-<env>` (Deployment 384–640 Mi, HPA 1–3 réplicas por CPU 70%, PDB, Service LoadBalancer), só com `DEPLOY_ENABLED=true`. Ao final envia a URL do LoadBalancer ao workspace do Auth (`scripts/sync-service-url.py`); depois rode o **Terraform deploy** do Auth para o API Gateway apontar para ela.
 
+
+### Evidência de cobertura de testes
+
+O build falha se a cobertura ficar abaixo de 80% (JaCoCo, `jacoco.minimum.coverage = 0.80` no `pom.xml`). Último CI verde em `homolog` (02/11/2026, 46 testes):
+
+| Linhas | Instruções | Branches | Relatório |
+|---|---|---|---|
+| 99,0% | 99,4% | 93,9% | artefato `jacoco-report` do [run 41473064053](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/actions/runs/41473064053) |
+
+Quality Gate do SonarCloud: [painel do projeto](https://sonarcloud.io/summary/overall?id=tiagomiele_oficina-orcamento-pagamento-service&branch=homolog). Para gerar o relatório local: `./mvnw verify` e abra `target/site/jacoco/index.html`.
+
 ## 12. Observabilidade
 
 New Relic APM `oficina-orcamento-pagamento-service-<env>` (agente Java, distributed tracing, logs em JSON com `correlationId` e `numeroOs`). Dashboard, alertas e profundidade das DLQs: [`oficina-kubernetes-infra`](https://github.com/tiagomiele/oficina-kubernetes-infra#readme).
