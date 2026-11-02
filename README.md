@@ -46,21 +46,7 @@ Java 21 · Spring Boot 3.3 (Web, Validation, Security, Actuator, JPA sem Spring 
 
 ## 4. Arquitetura
 
-```mermaid
-flowchart LR
-  Cliente((Cliente)) -->|JWT do CPF| APIGW[API Gateway]
-  APIGW --> OP
-  MP[(Mercado Pago)] -->|webhook| APIGW
-  subgraph EKS [EKS - namespace oficina-orcamento-pagamento-&lt;env&gt;]
-    OP[Orçamento e Pagamento]
-  end
-  OS[OS Service<br/>orquestrador] -->|comandos| Q1[[SQS orcamento-pagamento-comandos]]
-  Q1 --> OP
-  OP -->|eventos| Q2[[SQS os-eventos]]
-  Q2 --> OS
-  OP --> DB[(RDS PostgreSQL)]
-  OP -->|preferência e consulta| MP
-```
+![Arquitetura do Orçamento e Pagamento: cliente, API Gateway, EKS, Saga por SQS, RDS, Mercado Pago e New Relic](docs/assets/arquitetura-orcamento-pagamento.png)
 
 Clean Architecture com 4 camadas, validada por ArchUnit (`ArchitectureTest`):
 
@@ -73,20 +59,7 @@ Clean Architecture com 4 camadas, validada por ArchUnit (`ArchitectureTest`):
 
 **Estados do orçamento**
 
-```mermaid
-stateDiagram-v2
-  [*] --> AGUARDANDO_APROVACAO: GERAR_ORCAMENTO
-  AGUARDANDO_APROVACAO --> APROVADO: cliente aprova
-  AGUARDANDO_APROVACAO --> REJEITADO: cliente rejeita
-  AGUARDANDO_APROVACAO --> CANCELADO: CANCELAR_ORCAMENTO
-  APROVADO --> CANCELADO: CANCELAR_ORCAMENTO (sem estoque)
-  APROVADO --> PAGAMENTO_PENDENTE: SOLICITAR_PAGAMENTO
-  PAGAMENTO_PENDENTE --> PAGO: webhook approved
-  PAGAMENTO_PENDENTE --> PAGAMENTO_RECUSADO: webhook rejected
-  PAGAMENTO_RECUSADO --> PAGAMENTO_PENDENTE: nova-tentativa
-  PAGAMENTO_RECUSADO --> PAGO: aprovado no mesmo link
-  PAGO --> [*]
-```
+![Ciclo de vida do orçamento e quem dispara cada mudança de status](docs/assets/estados-orcamento.png)
 
 ## 5. Participação na Saga
 
@@ -121,33 +94,7 @@ Mensagem que falha 5 vezes vai para a DLQ `oficina-<env>-orcamento-pagamento-com
 
 **Fluxo completo**
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant OS as OS Service (Saga)
-  participant Q as SQS
-  participant OP as Orçamento e Pagamento
-  participant MP as Mercado Pago
-  participant C as Cliente
-  participant GW as API Gateway
-  OS->>Q: SOLICITAR_PAGAMENTO (OS-..., valor)
-  Q->>OP: consome comando
-  OP->>MP: POST /checkout/preferences
-  MP-->>OP: id da preferência + sandbox_init_point
-  OP->>OP: Pagamento PENDENTE (link salvo no Postgres)
-  C->>GW: GET /pagamentos/{numeroOs} (JWT do CPF)
-  GW->>OP: repassa
-  OP-->>C: linkPagamento
-  C->>MP: paga no Checkout Pro
-  MP->>GW: POST /webhooks/mercadopago (x-signature)
-  GW->>OP: repassa
-  OP->>OP: valida HMAC-SHA256 com MERCADOPAGO_WEBHOOK_SECRET
-  OP->>MP: GET /v1/payments/{id}
-  MP-->>OP: status=approved, external_reference=OS-...
-  OP->>OP: Orçamento PAGO, Pagamento APROVADO
-  OP->>Q: PAGAMENTO_CONFIRMADO (comprovante)
-  Q->>OS: OS -> PAGA
-```
+![Pagamento com Mercado Pago passo a passo, da solicitação da Saga até a OS paga](docs/assets/fluxo-pagamento-mercadopago.png)
 
 **Regras importantes**
 
