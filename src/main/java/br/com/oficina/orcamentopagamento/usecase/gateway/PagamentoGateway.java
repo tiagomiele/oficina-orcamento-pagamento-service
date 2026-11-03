@@ -13,8 +13,16 @@ public interface PagamentoGateway {
 
   record Cobranca(String referencia, String link) {}
 
+  /**
+   * {@code referenciaCobranca} identifica a cobrança (tentativa) a que o pagamento pertence; nulo
+   * quando o provedor não informa.
+   */
   record ResultadoPagamento(
-      String pagamentoExternoId, String numeroOs, Situacao situacao, String detalhe) {}
+      String pagamentoExternoId,
+      String numeroOs,
+      String referenciaCobranca,
+      Situacao situacao,
+      String detalhe) {}
 
   enum Situacao {
     APROVADO,

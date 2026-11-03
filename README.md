@@ -88,9 +88,9 @@ Mensagem que falha 5 vezes vai para a DLQ `oficina-<env>-orcamento-pagamento-com
 
 | Sentido | Chamada | Para quê |
 |---|---|---|
-| Serviço → MP | `POST https://api.mercadopago.com/checkout/preferences` (Bearer `MERCADOPAGO_ACCESS_TOKEN`) | cria a preferência: item `id` = número da OS, `external_reference` = número da OS, `notification_url` = `<API Gateway>/webhooks/mercadopago`, `statement_descriptor`, `back_urls` opcional. Devolve o `sandbox_init_point` (link) |
+| Serviço → MP | `POST https://api.mercadopago.com/checkout/preferences` (Bearer `MERCADOPAGO_ACCESS_TOKEN`) | cria a preferência: item `id` = número da OS, `external_reference` = `<número da OS>:<id da tentativa>` (identifica a cobrança), `notification_url` = `<API Gateway>/webhooks/mercadopago`, `statement_descriptor`, `back_urls` opcional. Devolve o `sandbox_init_point` (link) |
 | MP → serviço | `POST <API Gateway>/webhooks/mercadopago?type=payment&data.id=<id>` com header `x-signature` | avisa que o pagamento mudou. A rota é pública no API Gateway, sem JWT |
-| Serviço → MP | `GET https://api.mercadopago.com/v1/payments/{id}` | busca o status real (`approved`, `rejected`...) e o `external_reference`. O serviço nunca confia só no corpo do webhook |
+| Serviço → MP | `GET https://api.mercadopago.com/v1/payments/{id}` | busca o status real (`approved`, `rejected`...) e o `external_reference`. O serviço nunca confia só no corpo do webhook e só aplica o resultado se o `external_reference` for o da cobrança mais recente da OS |
 
 **Fluxo completo**
 
@@ -146,7 +146,7 @@ Em **Authorize**, cole o `accessToken` do cliente (`POST <AUTH_BASE_URL>/auth/cp
 |---|---|
 | `orcamentos` | um registro por orçamento da OS (`numero_os`, `id_cliente`, `status`, `valor_total`, `motivo`, `correlation_id`). Um "refazer" gera um novo orçamento |
 | `itens_orcamento` | serviços e peças de cada orçamento (`tipo`, `id_servico_sku`, `quantidade`, `preco_unitario`) |
-| `pagamentos` | cada cobrança: `provedor`, `referencia_externa` (preferência do MP), `pagamento_externo_id` (comprovante), `status`, `link_pagamento`, `detalhe` |
+| `pagamentos` | cada cobrança: `provedor`, `referencia_externa` (`external_reference` da cobrança no MP), `pagamento_externo_id` (comprovante), `status`, `link_pagamento`, `detalhe` |
 | `mensagens_processadas` | `message_id` dos comandos já aplicados (idempotência) |
 | `flyway_schema_history` | versões do schema |
 
