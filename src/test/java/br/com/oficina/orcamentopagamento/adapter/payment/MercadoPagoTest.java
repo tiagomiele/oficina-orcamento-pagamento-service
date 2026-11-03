@@ -2,6 +2,7 @@ package br.com.oficina.orcamentopagamento.adapter.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -46,7 +47,7 @@ class MercadoPagoTest {
         .expect(requestTo("https://api.mp.test/checkout/preferences"))
         .andExpect(method(HttpMethod.POST))
         .andExpect(header("Authorization", "Bearer TEST-TOKEN"))
-        .andExpect(jsonPath("$.external_reference").value("OS-1"))
+        .andExpect(jsonPath("$.external_reference").value(startsWith("OS-1:")))
         .andExpect(jsonPath("$.notification_url").value("https://hook"))
         .andExpect(jsonPath("$.items[0].id").value("OS-1"))
         .andExpect(jsonPath("$.items[0].title").value("OS OS-1"))
@@ -67,19 +68,43 @@ class MercadoPagoTest {
               withSuccess(
                   "{\"status\":\""
                       + caso[1]
-                      + "\",\"external_reference\":\"OS-1\",\"status_detail\":\"d\"}",
+                      + "\",\"external_reference\":\"OS-1:t1\",\"status_detail\":\"d\"}",
                   MediaType.APPLICATION_JSON));
     }
 
     var cobranca = gateway.criarCobranca("OS-1", new BigDecimal("99.90"), "OS OS-1");
-    assertThat(cobranca.referencia()).isEqualTo("PREF-1");
+    assertThat(cobranca.referencia()).startsWith("OS-1:").hasSize("OS-1:".length() + 36);
     assertThat(cobranca.link()).isEqualTo("https://mp/sandbox");
     assertThat(gateway.consultar("1").situacao()).isEqualTo(Situacao.APROVADO);
     assertThat(gateway.consultar("2").situacao()).isEqualTo(Situacao.RECUSADO);
     var pendente = gateway.consultar("3");
     assertThat(pendente.situacao()).isEqualTo(Situacao.PENDENTE);
     assertThat(pendente.numeroOs()).isEqualTo("OS-1");
+    assertThat(pendente.referenciaCobranca()).isEqualTo("OS-1:t1");
     assertThat(gateway.provedor()).isEqualTo("mercadopago");
+    server.verify();
+  }
+
+  @Test
+  void preferenciaAntigaSemTentativaNaoTemReferenciaDaCobranca() {
+    RestClient.Builder builder = RestClient.builder();
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    var gateway = new MercadoPagoPagamentoGateway(builder, props("T", "s", null, true));
+    server
+        .expect(requestTo("https://api.mp.test/v1/payments/5"))
+        .andRespond(
+            withSuccess(
+                "{\"status\":\"approved\",\"external_reference\":\"OS-5\"}",
+                MediaType.APPLICATION_JSON));
+    server
+        .expect(requestTo("https://api.mp.test/v1/payments/6"))
+        .andRespond(withSuccess("{\"status\":\"approved\"}", MediaType.APPLICATION_JSON));
+    var antigo = gateway.consultar("5");
+    assertThat(antigo.numeroOs()).isEqualTo("OS-5");
+    assertThat(antigo.referenciaCobranca()).isNull();
+    var semReferencia = gateway.consultar("6");
+    assertThat(semReferencia.numeroOs()).isNull();
+    assertThat(semReferencia.referenciaCobranca()).isNull();
     server.verify();
   }
 

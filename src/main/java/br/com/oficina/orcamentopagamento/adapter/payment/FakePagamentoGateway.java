@@ -28,6 +28,6 @@ public class FakePagamentoGateway implements PagamentoGateway {
 
   @Override
   public ResultadoPagamento consultar(String pagamentoExternoId) {
-    return new ResultadoPagamento(pagamentoExternoId, null, Situacao.PENDENTE, null);
+    return new ResultadoPagamento(pagamentoExternoId, null, null, Situacao.PENDENTE, null);
   }
 }
