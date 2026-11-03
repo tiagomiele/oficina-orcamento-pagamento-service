@@ -19,7 +19,8 @@ public enum StatusOrcamento {
           destino == APROVADO || destino == REJEITADO || destino == CANCELADO;
       case APROVADO -> destino == PAGAMENTO_PENDENTE || destino == CANCELADO;
       case PAGAMENTO_PENDENTE -> destino == PAGO || destino == PAGAMENTO_RECUSADO;
-      case PAGAMENTO_RECUSADO -> destino == PAGAMENTO_PENDENTE || destino == CANCELADO;
+      case PAGAMENTO_RECUSADO ->
+          destino == PAGAMENTO_PENDENTE || destino == PAGO || destino == CANCELADO;
       default -> false;
     };
   }

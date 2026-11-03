@@ -20,8 +20,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
- * Mercado Pago Checkout Pro: cria a preferência com {@code external_reference} = número da OS e
- * consulta o pagamento informado pelo webhook em {@code /v1/payments/{id}}.
+ * Mercado Pago Checkout Pro: cria a preferência com {@code external_reference} = {@code <número da
+ * OS>:<id da tentativa>} e consulta o pagamento informado pelo webhook em {@code
+ * /v1/payments/{id}}. O {@code external_reference} é a referência da cobrança guardada no serviço.
  */
 @Component
 @ConditionalOnProperty(name = "oficina.pagamento.provedor", havingValue = "mercadopago")
@@ -29,6 +30,7 @@ public class MercadoPagoPagamentoGateway implements PagamentoGateway {
 
   private static final Logger log = LoggerFactory.getLogger(MercadoPagoPagamentoGateway.class);
   private static final ObjectMapper JSON = new ObjectMapper();
+  static final String SEPARADOR = ":";
   private static final Set<String> RECUSADOS =
       Set.of("rejected", "cancelled", "refunded", "charged_back");
 
@@ -63,7 +65,8 @@ public class MercadoPagoPagamentoGateway implements PagamentoGateway {
     item.put("currency_id", "BRL");
     Map<String, Object> corpo = new LinkedHashMap<>();
     corpo.put("items", List.of(item));
-    corpo.put("external_reference", numeroOs);
+    String referencia = numeroOs + SEPARADOR + UUID.randomUUID();
+    corpo.put("external_reference", referencia);
     if (!vazio(properties.notificationUrl())) {
       corpo.put("notification_url", properties.notificationUrl());
     }
@@ -88,7 +91,8 @@ public class MercadoPagoPagamentoGateway implements PagamentoGateway {
                     .body(JsonNode.class));
     String link =
         resposta.path(properties.sandbox() ? "sandbox_init_point" : "init_point").asText();
-    return new Cobranca(resposta.path("id").asText(), link);
+    log.info("Preferência {} criada para a cobrança {}", resposta.path("id").asText(), referencia);
+    return new Cobranca(referencia, link);
   }
 
   @Override
@@ -107,8 +111,15 @@ public class MercadoPagoPagamentoGateway implements PagamentoGateway {
             ? Situacao.APROVADO
             : RECUSADOS.contains(status) ? Situacao.RECUSADO : Situacao.PENDENTE;
     String referencia = pagamento.path("external_reference").asText(null);
+    int separador = referencia == null ? -1 : referencia.indexOf(SEPARADOR);
+    String numeroOs = separador < 0 ? referencia : referencia.substring(0, separador);
+    String referenciaCobranca = separador < 0 ? null : referencia;
     return new ResultadoPagamento(
-        pagamentoExternoId, referencia, situacao, pagamento.path("status_detail").asText(status));
+        pagamentoExternoId,
+        numeroOs,
+        referenciaCobranca,
+        situacao,
+        pagamento.path("status_detail").asText(status));
   }
 
   private static JsonNode chamar(String operacao, Supplier<JsonNode> chamada) {

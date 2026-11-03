@@ -72,7 +72,9 @@ public final class Pagamento {
   }
 
   private void finalizar(StatusPagamento destino, String idExterno, String motivo, Instant agora) {
-    if (status != StatusPagamento.PENDENTE) {
+    boolean aprovadoAposRecusa =
+        status == StatusPagamento.RECUSADO && destino == StatusPagamento.APROVADO;
+    if (status != StatusPagamento.PENDENTE && !aprovadoAposRecusa) {
       throw new TransicaoInvalidaException(status, destino);
     }
     status = destino;

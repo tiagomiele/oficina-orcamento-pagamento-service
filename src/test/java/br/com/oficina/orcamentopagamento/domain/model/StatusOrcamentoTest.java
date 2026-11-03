@@ -21,7 +21,8 @@ class StatusOrcamentoTest {
           StatusOrcamento.PAGAMENTO_PENDENTE,
           EnumSet.of(StatusOrcamento.PAGO, StatusOrcamento.PAGAMENTO_RECUSADO),
           StatusOrcamento.PAGAMENTO_RECUSADO,
-          EnumSet.of(StatusOrcamento.PAGAMENTO_PENDENTE, StatusOrcamento.CANCELADO));
+          EnumSet.of(
+              StatusOrcamento.PAGAMENTO_PENDENTE, StatusOrcamento.PAGO, StatusOrcamento.CANCELADO));
 
   @ParameterizedTest
   @EnumSource(StatusOrcamento.class)

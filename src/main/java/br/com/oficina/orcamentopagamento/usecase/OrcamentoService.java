@@ -207,6 +207,7 @@ public class OrcamentoService {
         new ResultadoPagamento(
             pagamento.getReferenciaExterna(),
             numeroOs,
+            pagamento.getReferenciaExterna(),
             aprovado ? Situacao.APROVADO : Situacao.RECUSADO,
             aprovado ? null : "Pagamento recusado (simulação)"));
   }
@@ -218,10 +219,7 @@ public class OrcamentoService {
     }
     Optional<Orcamento> atual = orcamentos.atual(resultado.numeroOs());
     Optional<Pagamento> ultimo = pagamentos.ultimo(resultado.numeroOs());
-    if (atual.isEmpty()
-        || atual.get().getStatus() != StatusOrcamento.PAGAMENTO_PENDENTE
-        || ultimo.isEmpty()
-        || ultimo.get().getStatus() != StatusPagamento.PENDENTE) {
+    if (atual.isEmpty() || ultimo.isEmpty() || !aplicavel(resultado, atual.get(), ultimo.get())) {
       log.info(
           "Notificação do pagamento {} já aplicada ou fora de ordem",
           resultado.pagamentoExternoId());
@@ -247,6 +245,32 @@ public class OrcamentoService {
         orcamentos.salvar(orcamento),
         dados("motivo", resultado.detalhe()));
     return true;
+  }
+
+  /**
+   * Só a cobrança mais recente muda o estado. Pagamentos sem referência da cobrança (preferências
+   * antigas) só são aceitos enquanto a cobrança está pendente.
+   */
+  private static boolean aplicavel(
+      ResultadoPagamento resultado, Orcamento orcamento, Pagamento pagamento) {
+    if (resultado.referenciaCobranca() == null) {
+      return pendente(orcamento, pagamento);
+    }
+    return resultado.referenciaCobranca().equals(pagamento.getReferenciaExterna())
+        && (pendente(orcamento, pagamento) || aprovadoAposRecusa(resultado, orcamento, pagamento));
+  }
+
+  private static boolean pendente(Orcamento orcamento, Pagamento pagamento) {
+    return orcamento.getStatus() == StatusOrcamento.PAGAMENTO_PENDENTE
+        && pagamento.getStatus() == StatusPagamento.PENDENTE;
+  }
+
+  /** No Checkout Pro o comprador pode tentar de novo no mesmo link depois de uma recusa. */
+  private static boolean aprovadoAposRecusa(
+      ResultadoPagamento resultado, Orcamento orcamento, Pagamento pagamento) {
+    return resultado.situacao() == Situacao.APROVADO
+        && orcamento.getStatus() == StatusOrcamento.PAGAMENTO_RECUSADO
+        && pagamento.getStatus() == StatusPagamento.RECUSADO;
   }
 
   private Orcamento doCliente(String numeroOs, Long idCliente) {
