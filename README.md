@@ -150,22 +150,33 @@ Em **Authorize**, cole o `accessToken` do cliente (`POST <AUTH_BASE_URL>/auth/cp
 | `mensagens_processadas` | `message_id` dos comandos já aplicados (idempotência) |
 | `flyway_schema_history` | versões do schema |
 
-**Ver os dados (RDS é privado):** túnel temporário pelo cluster + DBeaver ou `psql`. Rode numa janela PowerShell e deixe aberta:
+**Ver os dados (RDS é privado):** túnel temporário pelo cluster + DBeaver ou `psql`. Abra uma janela PowerShell só para o túnel, rode o bloco e deixe-a aberta:
 
 ```powershell
-$ns = 'oficina-orcamento-pagamento-production'   # ou oficina-orcamento-pagamento-homolog
+$amb   = 'homolog'                     # ou 'production'
+$porta = if ($amb -eq 'production') { 25433 } else { 15433 }   # uma porta por ambiente
+aws eks update-kubeconfig --region us-west-2 --name "oficina-$amb"   # aponta o kubectl para o cluster do ambiente
+$ns = "oficina-orcamento-pagamento-$amb"
+kubectl get ns $ns 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Namespace $ns não existe no cluster oficina-$amb. Confira se o ambiente está no ar (kubectl get ns)." }
 $url = kubectl get configmap orcamento-pagamento-config -n $ns -o jsonpath='{.data.DB_URL}'
 $dbHost = $url -replace '^jdbc:postgresql://([^:/]+).*$', '$1'
-kubectl get configmap orcamento-pagamento-config -n $ns -o jsonpath='{.data.DB_USER}'; ''
-"Database: " + ($url -replace '^.*/', '')
+"Usuario: " + (kubectl get configmap orcamento-pagamento-config -n $ns -o jsonpath='{.data.DB_USER}')
+"Database: " + ($url -replace '^.*/', '' -replace '\?.*$', '')
 $b64 = kubectl get secret orcamento-pagamento-secrets -n $ns -o jsonpath='{.data.DB_PASSWORD}'
 [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) | Set-Clipboard   # senha na área de transferência
+kubectl delete pod pg-tunnel -n $ns --ignore-not-found               # sobra de uma sessão anterior
 kubectl run pg-tunnel -n $ns --image=alpine/socat --restart=Never -- "tcp-listen:5432,fork,reuseaddr" "tcp-connect:${dbHost}:5432"
-kubectl wait pod/pg-tunnel -n $ns --for=condition=Ready --timeout=120s
-kubectl port-forward -n $ns pod/pg-tunnel 15433:5432
+kubectl wait pod/pg-tunnel -n $ns --for=condition=Ready --timeout=180s
+if ($LASTEXITCODE -ne 0) {
+  kubectl describe pod pg-tunnel -n $ns | Select-String -Context 0,8 'Events:'
+  throw 'O pg-tunnel não ficou pronto. Veja os Events acima.'
+}
+"Túnel aberto em localhost:$porta (deixe esta janela aberta)"
+kubectl port-forward -n $ns pod/pg-tunnel "${porta}:5432"
 ```
 
-No DBeaver: PostgreSQL, host `localhost`, porta `15433`, database/usuário mostrados acima, senha colada, SSL `require`. Ao terminar: `Ctrl+C`, `Set-Clipboard -Value ' '` e `kubectl delete pod pg-tunnel -n $ns`.
+No DBeaver: PostgreSQL, host `localhost`, porta mostrada pelo bloco (`15433` homologação, `25433` produção), database/usuário mostrados acima, senha colada, SSL `require`. Use uma conexão por ambiente e confira no seletor da barra de ferramentas qual está ativa antes de rodar o script. Senha recusada, `Connection refused` e pod em `Pending` estão explicados no [Database Infra, seção 6.3](https://github.com/tiagomiele/oficina-database-infra#63-ver-os-dados-do-rds-dbeaver-ou-psql). Ao terminar: `Ctrl+C`, `Set-Clipboard -Value ' '` e `kubectl delete pod pg-tunnel -n $ns`.
 
 Consultas úteis:
 
